@@ -1,5 +1,8 @@
 # imu1 — CoreS3 IMU Logger
 
+[![ビルド](https://github.com/sat0esuS/imu1/actions/workflows/build-and-deploy.yml/badge.svg)](https://github.com/sat0esuS/imu1/actions/workflows/build-and-deploy.yml)
+[![書き込みページ](https://img.shields.io/badge/書き込みページ-sat0esus.github.io%2Fimu1-2e5fa3)](https://sat0esus.github.io/imu1/)
+
 ミリ波レーダー(TI IWR6843AOP)によるSLAMで、**レーダーが原理的に測れない「回転」をIMUで埋める**ための一式。
 
 レーダーの自己速度推定は `v_d = -v·cosθ` を解いているが、この式に回転の項は無い。
