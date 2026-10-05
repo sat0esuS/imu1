@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CoreS3 IMU Logger</title>
+<meta name="description" content="M5Stack CoreS3 にIMUロガーのファームウェアをブラウザから書き込むページ">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>📡</text></svg>">
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<style>
+  :root {
+    --bg: #ffffff;
+    --surface: #f7f8fa;
+    --card-blue: #eef3fa;
+    --card-orange: #fff6e8;
+    --card-green: #e9f5f0;
+    --border: #dde3ec;
+    --ink: #1f1f28;
+    --sub: #5c5a6e;
+    --blue: #2e5fa3;
+    --orange: #c77a15;
+    --green: #2f7a5e;
+    --red: #b5484e;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #15151c;
+      --surface: #1d1d26;
+      --card-blue: #1b2634;
+      --card-orange: #302616;
+      --card-green: #17291f;
+      --border: #2e2e3c;
+      --ink: #e9e9f0;
+      --sub: #a3a1b4;
+      --blue: #7aa7e0;
+      --orange: #e0a94f;
+      --green: #6cc3a0;
+      --red: #e38a8f;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #15151c; --surface: #1d1d26; --card-blue: #1b2634;
+    --card-orange: #302616; --card-green: #17291f; --border: #2e2e3c;
+    --ink: #e9e9f0; --sub: #a3a1b4; --blue: #7aa7e0; --orange: #e0a94f;
+    --green: #6cc3a0; --red: #e38a8f;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN",
+                 "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+    line-height: 1.75;
+    font-size: 16px;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 16px 80px; }
+
+  header { padding: 56px 0 28px; border-bottom: 3px solid var(--blue); }
+  h1 { margin: 0 0 6px; font-size: clamp(1.6rem, 5vw, 2.1rem); letter-spacing: -.01em; }
+  .lede { margin: 0; color: var(--sub); font-size: .98rem; }
+
+  h2 {
+    margin: 48px 0 4px; font-size: 1.22rem;
+    padding-left: 12px; border-left: 4px solid var(--blue);
+  }
+  h2 + .note { margin-top: 0; color: var(--sub); font-size: .9rem; }
+  h3 { margin: 28px 0 6px; font-size: 1.02rem; }
+  p { margin: 12px 0; }
+
+  .flash {
+    margin: 28px 0 8px; padding: 28px 24px;
+    background: var(--card-blue); border: 1px solid var(--border);
+    border-radius: 14px; text-align: center;
+  }
+  esp-web-install-button { --esp-tools-button-color: #fff; }
+  esp-web-install-button[install-unsupported] { display: block; }
+  .unsupported {
+    color: var(--red); font-size: .92rem; margin: 0;
+  }
+  .flash .hint { margin: 16px 0 0; font-size: .85rem; color: var(--sub); }
+
+  ol.steps { margin: 16px 0; padding-left: 0; list-style: none; counter-reset: s; }
+  ol.steps > li {
+    counter-increment: s; position: relative;
+    padding: 0 0 0 42px; margin: 0 0 18px;
+  }
+  ol.steps > li::before {
+    content: counter(s); position: absolute; left: 0; top: 2px;
+    width: 27px; height: 27px; border-radius: 50%;
+    background: var(--blue); color: #fff;
+    font-size: .85rem; font-weight: 700;
+    display: grid; place-items: center;
+  }
+  ol.steps b { display: block; }
+
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: .93rem; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--blue); font-size: .84rem; letter-spacing: .02em; }
+  tbody tr:nth-child(odd) { background: var(--surface); }
+
+  code {
+    font-family: var(--mono); font-size: .88em;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 5px; padding: 1px 5px;
+  }
+  pre {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px; overflow-x: auto;
+    font-family: var(--mono); font-size: .86rem; line-height: 1.65;
+  }
+  pre code { background: none; border: 0; padding: 0; font-size: 1em; }
+
+  .callout {
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px 18px; margin: 20px 0;
+  }
+  .callout.warn { background: var(--card-orange); }
+  .callout.ok { background: var(--card-green); }
+  .callout p:first-child { margin-top: 0; }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout .label {
+    font-weight: 700; font-size: .84rem; letter-spacing: .04em;
+    display: block; margin-bottom: 4px;
+  }
+  .callout.warn .label { color: var(--orange); }
+  .callout.ok .label { color: var(--green); }
+
+  footer {
+    margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border);
+    color: var(--sub); font-size: .86rem;
+  }
+  a { color: var(--blue); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>CoreS3 IMU Logger</h1>
+  <p class="lede">
+    ミリ波レーダーSLAM用に、M5Stack CoreS3 の内蔵IMU(BMI270)を読んでUSBシリアルへ流すファームウェア。
+    ブラウザから直接書き込めます。
+  </p>
+</header>
+
+<h2>書き込む</h2>
+<p class="note">CoreS3 を USB-C でPCに繋いでから、下のボタンを押してください。</p>
+
+<div class="flash">
+  <esp-web-install-button manifest="manifest.json">
+    <button slot="activate">ファームウェアを書き込む</button>
+    <span slot="unsupported" class="unsupported">
+      このブラウザは Web Serial に対応していません。<br>
+      <b>Chrome</b> または <b>Edge</b>（デスクトップ版）で開き直してください。
+      Safari と iOS では動作しません。
+    </span>
+    <span slot="not-allowed" class="unsupported">
+      このページは HTTPS で開く必要があります。
+    </span>
+  </esp-web-install-button>
+  <p class="hint">
+    押すとシリアルポートの選択ダイアログが出ます。<br>
+    <code>USB JTAG/serial debug unit</code> や <code>M5Stack</code> と表示されるものを選んでください。
+  </p>
+</div>
+
+<div class="callout warn">
+  <span class="label">書き込みに失敗するとき</span>
+  <p>
+    CoreS3 を<b>ダウンロードモード</b>にしてから、もう一度試してください。
+    本体左側面のリセットボタンを<b>約2秒長押し</b>すると緑のLEDが点灯し、この状態になります。
+  </p>
+  <p>
+    ポートの一覧に何も出ない場合は、USBケーブルが<b>充電専用でないか</b>確認してください。
+    データ線の無いケーブルだと認識されません。
+  </p>
+</div>
+
+<h2>書き込めたかの確認</h2>
+<ol class="steps">
+  <li>
+    <b>画面に <code>IMU LOGGER (BMI270)</code> と出る</b>
+    出ない場合は書き込みが完了していません。
+  </li>
+  <li>
+    <b>本体を傾けると <code>gz</code> の値が動く</b>
+    静止させると 0 付近の小さな値に戻ります。
+  </li>
+  <li>
+    <b>机に置いて数秒待つと <code>bias measuring</code> が <code>bias +0.xxxx dps</code> に変わる</b>
+    これが出れば準備完了です。この値がジャイロの「静止しているのに回っていると言い張る量」です。
+  </li>
+</ol>
+
+<p>
+  書き込み後にこのページの「Logs &amp; Console」を開くと、流れているデータをそのまま見られます。
+  <code>I,12345678,0.0123,...</code> のような行が毎秒100行ほど出ていれば正常です。
+</p>
+
+<h3>画面下部のタッチ操作</h3>
+<table>
+  <thead><tr><th>位置</th><th>動作</th></tr></thead>
+  <tbody>
+    <tr><td>左</td><td>バイアス測定をやり直す（静止させてから押す）</td></tr>
+    <tr><td>中央</td><td>表示のヨー角をゼロに戻す</td></tr>
+    <tr><td>右</td><td>出力の ON / OFF</td></tr>
+  </tbody>
+</table>
+
+<h2>次にやること</h2>
+
+<h3>1. PC側の準備</h3>
+<pre><code>git clone https://github.com/sat0esuS/imu1.git
+cd imu1/pc
+pip install -r requirements.txt
+python logger.py --list</code></pre>
+<p>
+  <code>--list</code> でシリアルポートの一覧が出ます。CoreS3 は
+  <code>USB Serial</code> や <code>M5Stack</code> と表示されます。
+</p>
+
+<h3>2. D-1実験（MCLに入れる前に必ず）</h3>
+<p>
+  ジャイロには必ずバイアスがあるので、素性を測ってから使います。
+  レーダーを繋がなくてもIMUだけで記録できます。
+</p>
+<pre><code># 静止60秒 × 3本（バイアスとその再現性）
+python logger.py --no-radar --imu COM7 --out d1a_1 --duration 60
+python logger.py --no-radar --imu COM7 --out d1a_2 --duration 60
+python logger.py --no-radar --imu COM7 --out d1a_3 --duration 60
+
+# 90°旋回 × 10回（本命。間に必ず数秒止める）
+python logger.py --no-radar --imu COM7 --out d1c
+
+# 解析
+python analyze_d1.py --bias d1a_*_imu.csv --scale d1c_*_imu.csv --expect 90</code></pre>
+
+<div class="callout ok">
+  <span class="label">判定の基準は 13.2°</span>
+  <p>
+    このレーダーは角度分解能 26.4° なので、距離 r の点は元々 <code>r·tan(13.2°)</code> だけ横にぼやけています。
+    向きの誤差がこれを超えると、IMU由来の誤差がセンサ本来のぼやけより大きくなります。
+    ドリフトもスケール誤差も周回誤差も、すべてこの一本の線で合否を判断できます。
+  </p>
+</div>
+
+<h3>3. 本番の記録</h3>
+<pre><code>python logger.py --cfg xwr68xx_AOP_profile.cfg \
+                 --radar-cfg COM5 --radar-data COM6 --imu COM7 \
+                 --out run2 --outdir data</code></pre>
+<p>
+  レーダーとIMUを1つのプログラムで読み、<b>同じ時計で時刻を打ちます</b>。
+  出てくる <code>.dat</code> は TI Visualizer と同一形式なので、既存の解析はそのまま動きます。
+</p>
+
+<h2>このファームが何をしているか</h2>
+<p>
+  内蔵IMUを可能な限り速く読み、1サンプル1行でUSBシリアルへ流すだけです。
+  <b>積分も姿勢推定もしません。</b>
+  計算をPC側に寄せてあるので、パラメータを変えて何度でもやり直せます。
+</p>
+<table>
+  <thead><tr><th>行</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>I,...</code></td>
+      <td><code>micros, gx, gy, gz, ax, ay, az</code> — ジャイロ[deg/s]と加速度[G]</td>
+    </tr>
+    <tr>
+      <td><code>H,...</code></td>
+      <td>1秒ごとの死活確認。累計サンプル数とレート</td>
+    </tr>
+    <tr>
+      <td><code>M,...</code></td>
+      <td>ボタン操作などの目印</td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  <code>micros</code> は CoreS3 側の時刻で<b>間隔が正確</b>、PC側が付ける受信時刻は<b>レーダーと共通の時計</b>です。
+  <code>imu.py</code> が両者を1次式で対応づけて、良いところを取ります。
+</p>
+
+<h2>別の書き込み方法</h2>
+<table>
+  <thead><tr><th>方法</th><th>手順</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>PlatformIO</td>
+      <td><code>cd firmware &amp;&amp; pio run -t upload</code></td>
+    </tr>
+    <tr>
+      <td>Arduino IDE</td>
+      <td>
+        <code>firmware/src/main.cpp</code> の中身を <code>.ino</code> にコピー。<br>
+        ボード <b>M5CoreS3</b> / <b>USB CDC On Boot: Enabled</b> / ライブラリ <b>M5Unified</b>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<footer>
+  <p>
+    <a href="https://github.com/sat0esuS/imu1">github.com/sat0esuS/imu1</a> ・
+    <a href="docs/IMU%E6%89%8B%E9%A0%86%E6%9B%B8.md">詳しい手順書</a>
+  </p>
+  <p>
+    狭小空間探索を目的としたミリ波センシングドローンの開発 ／ 金沢工業大学
+  </p>
+</footer>
+
+</div>
+</body>
+</html>

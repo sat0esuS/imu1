@@ -1,0 +1,98 @@
+name: ファームウェアのビルドと書き込みページの公開
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ビルド
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: PlatformIO をキャッシュ
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: pio-${{ runner.os }}-${{ hashFiles('firmware/platformio.ini') }}
+          restore-keys: pio-${{ runner.os }}-
+
+      - name: ツールを入れる
+        run: |
+          python -m pip install --upgrade pip
+          pip install platformio
+          # esptool は merge_bin のCLIが v5 で変わったため v4 系に固定する
+          pip install "esptool==4.8.1"
+
+      - name: ビルド
+        working-directory: firmware
+        run: pio run -e m5stack-cores3
+
+      - name: 1個の .bin にまとめる
+        run: |
+          set -eux
+          BUILD=firmware/.pio/build/m5stack-cores3
+          ls -la "$BUILD"
+
+          # boot_app0.bin は Arduino フレームワークのパッケージ内にある
+          BOOT_APP0=$(find ~/.platformio/packages -name boot_app0.bin | head -n1)
+          test -n "$BOOT_APP0"
+          echo "boot_app0: $BOOT_APP0"
+
+          mkdir -p _site
+          # ESP32-S3 はブートローダが 0x0 から始まる (ESP32 の 0x1000 とは違う)
+          esptool.py --chip esp32s3 merge_bin \
+            -o _site/firmware-merged.bin \
+            --flash_mode dio --flash_freq 80m --flash_size 16MB \
+            0x0     "$BUILD/bootloader.bin" \
+            0x8000  "$BUILD/partitions.bin" \
+            0xe000  "$BOOT_APP0" \
+            0x10000 "$BUILD/firmware.bin"
+
+          ls -la _site/firmware-merged.bin
+
+      - name: ページを組み立てる
+        run: |
+          set -eux
+          cp web/index.html _site/
+          # manifest にビルド情報を埋める
+          VERSION="$(date -u +%Y-%m-%d) (${GITHUB_SHA::7})"
+          sed "s|__VERSION__|${VERSION}|" web/manifest.json > _site/manifest.json
+          cat _site/manifest.json
+          # 手順書もページから読めるようにしておく
+          mkdir -p _site/docs
+          cp docs/*.md _site/docs/ || true
+
+      - name: 成果物をアップロード
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    name: 公開
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

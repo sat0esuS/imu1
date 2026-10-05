@@ -1,0 +1,12 @@
+.pio/
+__pycache__/
+*.pyc
+data/
+*.dat
+*_imu.csv
+*_frames.csv
+*_meta.json
+d1_report.txt
+# 図は出力先を分けること(*.png は追跡する)
+!web/*.png
+.DS_Store
