@@ -78,9 +78,19 @@
   }
   esp-web-install-button { --esp-tools-button-color: #fff; }
   esp-web-install-button[install-unsupported] { display: block; }
+  /* カスタム要素が定義される前は、slot の中身が全部そのまま見えてしまう。
+     定義されるまでは隠し、代わりに読み込み中の表示を出す。 */
+  esp-web-install-button:not(:defined) { display: block; }
+  esp-web-install-button:not(:defined) > * { display: none; }
+  esp-web-install-button:not(:defined)::before {
+    content: "読み込み中…"; color: var(--sub); font-size: .92rem;
+  }
   .unsupported {
     color: var(--red); font-size: .92rem; margin: 0;
   }
+  #offline { display: none; color: var(--red); font-size: .92rem; margin: 0; }
+  #offline.show { display: block; }
+  #offline.show ~ .hint { display: none; }
   .flash .hint { margin: 16px 0 0; font-size: .85rem; color: var(--sub); }
 
   ol.steps { margin: 16px 0; padding-left: 0; list-style: none; counter-reset: s; }
@@ -162,6 +172,10 @@
       このページは HTTPS で開く必要があります。
     </span>
   </esp-web-install-button>
+  <p id="offline">
+    書き込みツールの読み込みに失敗しました。ネットワーク接続を確認して、
+    ページを再読み込みしてください。
+  </p>
   <p class="hint">
     押すとシリアルポートの選択ダイアログが出ます。<br>
     <code>USB JTAG/serial debug unit</code> や <code>M5Stack</code> と表示されるものを選んでください。
@@ -314,5 +328,16 @@ python analyze_d1.py --bias d1a_*_imu.csv --scale d1c_*_imu.csv --expect 90</cod
 </footer>
 
 </div>
+
+<script>
+  // 8秒待ってもカスタム要素が定義されなければ、CDNに届いていないと判断する
+  setTimeout(function () {
+    if (!customElements.get("esp-web-install-button")) {
+      var btn = document.querySelector("esp-web-install-button");
+      if (btn) btn.style.display = "none";
+      document.getElementById("offline").classList.add("show");
+    }
+  }, 8000);
+</script>
 </body>
 </html>
