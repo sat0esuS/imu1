@@ -86,6 +86,9 @@ python analyze_d1.py --bias d1a_*_imu.csv --scale d1c_*_imu.csv --expect 90 --tu
 
 `d1_report.txt` と図が出る。レポートの末尾に次の手順で使うコマンドがそのまま印字される。
 
+ファイル名の `*` はスクリプト側で展開するので、PowerShell でもそのまま打てる
+（PowerShell は Unix のシェルと違い、コマンドラインの `*` を展開しない）。
+
 **D-1c が本命。** ここで出る「1回の旋回あたり±何度」が、そのままMCLの動作モデルのパラメータになる。
 
 ### 3. 本番の記録

@@ -164,6 +164,8 @@ python analyze_d1.py --bias  d1a_1_*_imu.csv d1a_2_*_imu.csv d1a_3_*_imu.csv \
 
 `d1_report.txt` と図4枚が出る。レポートの末尾に、次の手順で使うコマンドがそのまま印字される。
 
+ファイル名の `*` はスクリプト側で展開するので、PowerShell でもそのまま打てる。
+
 ### 読み方
 
 | 指標 | 目安 | 外れていたら |

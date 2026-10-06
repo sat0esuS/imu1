@@ -10,17 +10,22 @@ MCLに組み込む前に必ずこれを通す。
   D-1c スケール     : 正確な90°旋回 × 10回 -> 倍率と1回あたりの誤差
   D-1d 周回         : ルート1周(合計360°)  -> 実走行での累積誤差
 
-使い方:
-  python analyze_d1.py --bias  d1a_1_imu.csv d1a_2_imu.csv d1a_3_imu.csv
-  python analyze_d1.py --drift d1b_imu.csv
-  python analyze_d1.py --scale d1c_imu.csv --expect 90 --turns 10
-  python analyze_d1.py --loop  d1d_imu.csv --expect 360
+使い方(ファイル名にワイルドカードを使える。PowerShellでもOK):
+  python analyze_d1.py --bias  d1a_*_imu.csv
+  python analyze_d1.py --drift d1b_*_imu.csv
+  python analyze_d1.py --scale d1c_*_imu.csv --expect 90 --turns 10
+  python analyze_d1.py --loop  d1d_*_imu.csv --loop-expect 360
+
+  まとめて:
+  python analyze_d1.py --bias d1a_*_imu.csv --scale d1c_*_imu.csv --expect 90
 
 出力:
   d1_report.txt  と 図(d1_bias.png / d1_drift.png / d1_scale.png)
 """
 import argparse
+import glob
 import os
+import sys
 
 import numpy as np
 import matplotlib
@@ -285,9 +290,54 @@ def run_loop(path, outdir, expect_deg=360.0, bias=None, scale=1.0, sign_z=1.0):
     return lines
 
 
+# ============================================================ ファイル指定
+def expand(patterns, label, many=False):
+    """
+    ワイルドカードを展開する。
+
+    PowerShell(Windows) はコマンドラインの * を展開しないため、
+    d1a_*_imu.csv がそのまま文字列で渡ってくる。
+    Unixのシェルでは展開済みのものが来るので、どちらでも動くように
+    ここで glob をかける。
+    """
+    if patterns is None:
+        return None
+    if isinstance(patterns, str):
+        patterns = [patterns]
+
+    found = []
+    for pat in patterns:
+        hits = sorted(glob.glob(pat))
+        if hits:
+            found += hits
+        elif os.path.exists(pat):      # * を含まない実在のパス
+            found.append(pat)
+        else:
+            print(f"  ! {label}: '{pat}' に一致するファイルがありません")
+    # 重複を落としつつ順序は保つ
+    seen, out = set(), []
+    for f in found:
+        if f not in seen:
+            seen.add(f)
+            out.append(f)
+
+    if not out:
+        sys.exit(f"{label} のファイルが1つも見つかりません。\n"
+                 f"  いまのフォルダ: {os.getcwd()}\n"
+                 f"  指定: {patterns}")
+    if not many and len(out) > 1:
+        print(f"  ! {label}: {len(out)} 件見つかりました。最新の "
+              f"{os.path.basename(out[-1])} を使います")
+        for f in out[:-1]:
+            print(f"      (使わない: {os.path.basename(f)})")
+        return out[-1]
+    return out if many else out[0]
+
+
 # ============================================================ main
 def main():
-    ap = argparse.ArgumentParser(description="D-1実験の解析")
+    ap = argparse.ArgumentParser(
+        description="D-1実験の解析（ファイル名にワイルドカードを使えます）")
     ap.add_argument("--bias", nargs="+", help="D-1a: 静止ログ(複数)")
     ap.add_argument("--drift", help="D-1b: 長時間静止ログ")
     ap.add_argument("--scale", help="D-1c: 繰り返し旋回ログ")
@@ -301,20 +351,31 @@ def main():
     ap.add_argument("--outdir", default=".", help="出力先")
     args = ap.parse_args()
 
+    # Windows でも * が効くように、ここで展開する
+    f_bias = expand(args.bias, "--bias", many=True)
+    f_drift = expand(args.drift, "--drift")
+    f_scale = expand(args.scale, "--scale")
+    f_loop = expand(args.loop, "--loop")
+    if f_bias:
+        print(f"--bias に使うファイル ({len(f_bias)}件):")
+        for f in f_bias:
+            print(f"    {os.path.basename(f)}")
+        print()
+
     os.makedirs(args.outdir, exist_ok=True)
     report, bias, scale = [], None, 1.0
 
-    if args.bias:
-        ls, bias = run_bias(args.bias, args.outdir, args.sign)
+    if f_bias:
+        ls, bias = run_bias(f_bias, args.outdir, args.sign)
         report += ls
-    if args.drift:
-        report += run_drift(args.drift, args.outdir, bias, args.sign)
-    if args.scale:
-        ls, scale, sd = run_scale(args.scale, args.outdir, args.expect,
+    if f_drift:
+        report += run_drift(f_drift, args.outdir, bias, args.sign)
+    if f_scale:
+        ls, scale, sd = run_scale(f_scale, args.outdir, args.expect,
                                   args.turns, bias, args.sign, args.wth)
         report += ls
-    if args.loop:
-        report += run_loop(args.loop, args.outdir, args.loop_expect,
+    if f_loop:
+        report += run_loop(f_loop, args.outdir, args.loop_expect,
                            bias, scale, args.sign)
 
     if not report:

@@ -25,6 +25,10 @@ IMU(CoreS3のBMI270)の積分値から与えること。
 gyro-scale / gyro-sign は analyze_d1.py が出す値をそのまま入れる。
 """
 import argparse
+import glob
+import os
+import sys
+
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
@@ -79,6 +83,30 @@ ap.add_argument("--no-imu", action="store_true",
                 help="IMUを読み込んでも回転に使わない(比較用)")
 ap.add_argument("--out", default="mcl_moving_imu.png")
 a = ap.parse_args()
+
+
+def _expand(pat, label, required=True):
+    """PowerShell は * を展開しないので、ここで展開する。"""
+    if not pat:
+        return None
+    hits = sorted(glob.glob(pat))
+    if not hits:
+        if os.path.exists(pat):
+            return pat
+        if required:
+            sys.exit(f"{label}: '{pat}' に一致するファイルがありません\n"
+                     f"  いまのフォルダ: {os.getcwd()}")
+        return None
+    if len(hits) > 1:
+        print(f"  ! {label}: {len(hits)} 件見つかりました。最新の "
+              f"{os.path.basename(hits[-1])} を使います")
+    return hits[-1]
+
+
+a.dat = _expand(a.dat, "dat")
+a.imu = _expand(a.imu, "--imu", required=False)
+a.frames = _expand(a.frames, "--frames", required=False)
+a.gt = _expand(a.gt, "--gt", required=False)
 
 lf = LikelihoodField(a.map)
 df = parse_dat(a.dat)
