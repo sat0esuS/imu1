@@ -80,9 +80,20 @@ A系列でレーダーの癖を測ったのと同じことを、IMUに対して�
 
 ```bash
 python logger.py --no-radar --imu COM7 --out d1a_1 --duration 60
-python logger.py --no-radar --imu COM7 --out d1c            # 旋回の合間に必ず数秒止める
+python logger.py --no-radar --imu COM7 --out d1c
 python analyze_d1.py --bias d1a_*_imu.csv --scale d1c_*_imu.csv --expect 90 --turns 10
 ```
+
+D-1c の動かし方（CoreS3 はUSBケーブルでPCに繋いだまま、机の上で手で回す）:
+
+```
+静止3秒 → 左に90° → 静止3秒 → 右に90°(戻す) → 静止3秒 → … を10回
+```
+
+紙に三角定規で直角を引き、ストッパーを置いて毎回同じ角度で止める。
+左右交互にするのはケーブルがねじれないため。**1回目は必ず左(反時計回り)**に回すと、
+レポートが `--gyro-sign` をそのまま判定してくれる。
+旋回の合間に止めるのは、そこからバイアスを測り直すため。
 
 `d1_report.txt` と図が出る。レポートの末尾に次の手順で使うコマンドがそのまま印字される。
 

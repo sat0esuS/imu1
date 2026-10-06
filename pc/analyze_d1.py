@@ -183,20 +183,44 @@ def run_scale(path, outdir, expect_deg=90.0, n_turns=None, bias=None,
                  + (f"（期待 {n_turns} 回）" if n_turns else ""))
     if not turns:
         lines.append("  ! 旋回が検出できません。--wth を下げてみてください。")
-        return lines, 1.0, np.nan
+        return lines, 1.0, np.nan, int(sign_z)
 
     meas = []
     for (t0, t1) in turns:
         meas.append(np.degrees(I.integrate_yaw(d, bias, t0=t0, t1=t1)))
     meas = np.array(meas)
-    sgn = np.sign(np.median(meas))
     amag = np.abs(meas)
 
     lines.append("")
-    lines.append("   #   積分値[deg]   誤差[deg]   所要[s]")
+    lines.append("   #   積分値[deg]   誤差[deg]   所要[s]   向き")
     for i, ((t0, t1), m) in enumerate(zip(turns, meas)):
         lines.append(f"  {i+1:2d}   {m:+9.2f}   {abs(m)-expect_deg:+8.2f}   "
-                     f"{t1-t0:6.2f}")
+                     f"{t1-t0:6.2f}   {'左' if m > 0 else '右'}")
+
+    # 1回目を「左回り(反時計回り)」で回す手順にしているので、
+    # その符号から --gyro-sign をそのまま決められる。
+    first = meas[0]
+    lines.append("")
+    lines.append("  --- 符号の判定 ---")
+    lines.append(f"  1回目の積分値     : {first:+.2f} deg")
+    if first > 0:
+        lines.append("  >> 1回目を左(反時計回り)に回したなら、符号はこのままでよい。")
+        lines.append("     run_moving_imu.py には  --gyro-sign +1")
+        sign_rec = +1
+    else:
+        lines.append("  >> 1回目を左(反時計回り)に回したのに負なので、符号が逆。")
+        lines.append("     run_moving_imu.py には  --gyro-sign -1")
+        lines.append("     (MCLのθは『前方=0・左が正』なので揃える必要がある)")
+        sign_rec = -1
+    n_left = int((meas > 0).sum())
+    lines.append(f"  左右の内訳        : 左 {n_left} 回 / 右 {len(meas)-n_left} 回")
+    if n_left and n_left < len(meas):
+        l_mean = np.abs(meas[meas > 0]).mean()
+        r_mean = np.abs(meas[meas < 0]).mean()
+        lines.append(f"  左右の平均        : 左 {l_mean:.2f}° / 右 {r_mean:.2f}°  "
+                     f"(差 {abs(l_mean-r_mean):.2f}°)")
+        if abs(l_mean - r_mean) > 2.0:
+            lines.append("  ! 左右で2°以上違う。回し方か治具の精度を疑うこと。")
 
     scale = expect_deg / amag.mean()
     lines.append("")
@@ -217,10 +241,6 @@ def run_scale(path, outdir, expect_deg=90.0, n_turns=None, bias=None,
     per = max(per, 0.005)   # 下限。これ以上絞るとパーティクルが追従できなくなる
     lines.append(f"     s_th ≒ {per:.4f} rad ({np.degrees(per):.2f}°) / フレーム")
     lines.append(f"     （現在の既定値 0.03 rad = 1.7° から下げられる見込み）")
-
-    if sgn < 0:
-        lines.append("")
-        lines.append("  ! 積分値が負です。左回りを正にしたいなら sign_z=-1.0 を指定。")
 
     # 図
     fig, axes = plt.subplots(1, 2, figsize=(10, 3.4), dpi=150)
@@ -250,7 +270,7 @@ def run_scale(path, outdir, expect_deg=90.0, n_turns=None, bias=None,
     fig.tight_layout()
     fig.savefig(os.path.join(outdir, "d1_scale.png"), facecolor="white")
     plt.close(fig)
-    return lines, float(scale), float((amag * scale).std())
+    return lines, float(scale), float((amag * scale).std()), sign_rec
 
 
 # ============================================================ D-1d 周回
@@ -363,7 +383,7 @@ def main():
         print()
 
     os.makedirs(args.outdir, exist_ok=True)
-    report, bias, scale = [], None, 1.0
+    report, bias, scale, sign_rec = [], None, 1.0, int(args.sign)
 
     if f_bias:
         ls, bias = run_bias(f_bias, args.outdir, args.sign)
@@ -371,8 +391,8 @@ def main():
     if f_drift:
         report += run_drift(f_drift, args.outdir, bias, args.sign)
     if f_scale:
-        ls, scale, sd = run_scale(f_scale, args.outdir, args.expect,
-                                  args.turns, bias, args.sign, args.wth)
+        ls, scale, sd, sign_rec = run_scale(f_scale, args.outdir, args.expect,
+                                            args.turns, bias, args.sign, args.wth)
         report += ls
     if f_loop:
         report += run_loop(f_loop, args.outdir, args.loop_expect,
@@ -388,7 +408,7 @@ def main():
                "",
                "  run_moving.py には次のように渡す:",
                f"    --imu <...>_imu.csv --frames <...>_frames.csv "
-               f"--gyro-scale {scale:.4f} --gyro-sign {args.sign:+.0f}"]
+               f"--gyro-scale {scale:.4f} --gyro-sign {sign_rec:+d}"]
 
     text = "\n".join(report)
     print(text)
