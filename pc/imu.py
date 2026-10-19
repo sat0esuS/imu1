@@ -108,14 +108,38 @@ def stationary_mask(imu, w_th=1.0, a_tol=0.05, win=0.5):
 
 
 # ---------------------------------------------------------------- バイアス
-def estimate_bias(imu, t0=None, t1=None, use_stationary=True):
+def still_segments(imu, min_len=1.5):
+    """
+    静止が min_len 秒以上続いた区間を [(t0, t1, 点数, 平均), ...] で返す。
+
+    走行中でも、まっすぐ滑らかに押している瞬間は一瞬だけ「静止」と
+    判定されてしまう。短い区間を捨てることで、本当に止まっていた
+    区間（出発前と終点）だけを拾う。
+    """
+    t = imu.t.values
+    st = stationary_mask(imu)
+    idx = np.where(st)[0]
+    if not len(idx):
+        return []
+    out = []
+    for g in np.split(idx, np.where(np.diff(idx) > 1)[0] + 1):
+        if t[g[-1]] - t[g[0]] >= min_len:
+            out.append((float(t[g[0]]), float(t[g[-1]]), int(len(g)),
+                        float(imu.wz.values[g].mean())))
+    return out
+
+
+def estimate_bias(imu, t0=None, t1=None, use_stationary=True, min_len=1.5):
     """
     ジャイロZのバイアス [deg/s] を推定する。
 
-    t0, t1 を指定すればその区間、しなければ静止と判定された全区間を使う。
-    戻り値: dict(bias, std, n, t_span)
+    t0, t1 を指定すればその区間を使う。
+    指定しなければ、min_len 秒以上続いた静止区間だけを使う
+    （走行中の見かけの静止を拾わないため）。
+    戻り値: dict(bias, std, n, t_span, ok, segments)
     """
     t = imu.t.values
+    segs = []
     if t0 is not None or t1 is not None:
         m = np.ones(len(t), bool)
         if t0 is not None:
@@ -123,17 +147,26 @@ def estimate_bias(imu, t0=None, t1=None, use_stationary=True):
         if t1 is not None:
             m &= t <= t1
     elif use_stationary:
-        m = stationary_mask(imu)
+        segs = still_segments(imu, min_len)
+        if segs:
+            m = np.zeros(len(t), bool)
+            for s0, s1, _, _ in segs:
+                m |= (t >= s0) & (t <= s1)
+        else:
+            # 長い静止区間が無ければ、従来どおり静止判定だけで妥協する
+            m = stationary_mask(imu)
     else:
         m = np.ones(len(t), bool)
 
     if m.sum() < 10:
-        return dict(bias=0.0, std=np.nan, n=int(m.sum()), t_span=0.0, ok=False)
+        return dict(bias=0.0, std=np.nan, n=int(m.sum()), t_span=0.0,
+                    ok=False, segments=segs)
 
     w = imu.wz.values[m]
     return dict(bias=float(w.mean()), std=float(w.std()),
                 n=int(m.sum()),
-                t_span=float(t[m].max() - t[m].min()), ok=True)
+                t_span=float(t[m].max() - t[m].min()), ok=True,
+                segments=segs)
 
 
 def bias_track(imu, bias0, min_gap=1.0):

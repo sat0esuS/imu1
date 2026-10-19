@@ -75,6 +75,9 @@ ap.add_argument("--gyro-sign", type=float, default=1.0,
                 help="ジャイロZの符号 (+1: 左回りが正)")
 ap.add_argument("--gyro-bias", type=float, default=None,
                 help="バイアス[deg/s]。省略時はログの静止区間から自動推定")
+ap.add_argument("--bias-window", nargs=2, type=float, default=None,
+                metavar=("T0", "T1"),
+                help="バイアスを測る時間窓[秒]。出発前の静止区間を手で指定するとき")
 ap.add_argument("--bias-track", action="store_true",
                 help="静止区間ごとにバイアスを測り直す(長時間走行向け)")
 ap.add_argument("--s-th", type=float, default=None,
@@ -138,9 +141,27 @@ if a.imu:
         bias = IMU.bias_track(d_imu, b0)
         print(f"\nバイアス追従: {bias.min():+.4f} 〜 {bias.max():+.4f} deg/s")
     else:
-        bias = a.gyro_bias if a.gyro_bias is not None \
-            else IMU.estimate_bias(d_imu)["bias"]
-        print(f"\nバイアス: {float(np.mean(bias)):+.5f} deg/s")
+        if a.gyro_bias is not None:
+            bias = a.gyro_bias
+            print(f"\nバイアス: {bias:+.5f} deg/s  (手で指定)")
+        elif a.bias_window:
+            est = IMU.estimate_bias(d_imu, a.bias_window[0], a.bias_window[1])
+            bias = est["bias"]
+            print(f"\nバイアス: {bias:+.5f} deg/s  "
+                  f"({a.bias_window[0]:.1f}-{a.bias_window[1]:.1f}s, {est['n']:,}点)")
+        else:
+            est = IMU.estimate_bias(d_imu)
+            bias = est["bias"]
+            print(f"\nバイアス: {bias:+.5f} deg/s  ({est['n']:,}点)")
+            for s0, s1, n, mu in est.get("segments", []):
+                print(f"    静止区間 {s0:6.2f}-{s1:6.2f}s  "
+                      f"({n:,}点, 平均 {mu:+.5f})")
+            segs = est.get("segments", [])
+            if len(segs) >= 2:
+                spread = max(x[3] for x in segs) - min(x[3] for x in segs)
+                print(f"    区間ごとの差 {spread:.5f} deg/s "
+                      + ("→ 走行中にバイアスは動いていない"
+                         if spread < 0.01 else "→ 走行中に動いている。--bias-track を検討"))
 
     tab = IMU.dtheta_per_frame(d_imu, fr, bias, scale=a.gyro_scale)
     dth = dict(zip(tab.frame.values, tab.dtheta.values))
