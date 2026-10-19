@@ -39,6 +39,10 @@ except ImportError:
 
 MAGIC = bytes([0x02, 0x01, 0x04, 0x03, 0x06, 0x05, 0x08, 0x07])
 
+# DATAポートの実効バイトレート。8N1 なので 1バイト = 10ビット。
+# フレーム先頭が届いた時刻をバイト位置から逆算するのに使う。
+BYTES_PER_SEC = 921600.0 / 10.0
+
 
 # ---------------------------------------------------------------- ポート一覧
 def list_serial_ports():
@@ -106,6 +110,13 @@ class RadarReader(threading.Thread):
 
     def run(self):
         buf = bytearray()
+        # ストリーム先頭から数えた絶対バイト位置。
+        # buf[0] がストリームの何バイト目かを覚えておくことで、
+        # マジックワードが「いつ届いたか」をバイト位置から逆算できる。
+        stream_pos = 0          # これまでに受信した総バイト数
+        buf_start = 0           # buf[0] の絶対位置
+        t_prev = None           # ひとつ前のチャンクの到着時刻
+
         try:
             ser = serial.Serial(self.port, 921600, timeout=0.05)
         except Exception as e:
@@ -116,31 +127,58 @@ class RadarReader(threading.Thread):
                 open(self.frames_path, "w", encoding="utf-8") as ffr:
             ffr.write("t_host,frame,n_bytes\n")
             while not self.stop_evt.is_set():
-                chunk = ser.read(8192)
+                # read(8192) だと 8192バイト溜まるかタイムアウトするまで戻らない。
+                # レーダーは 9 kB/s 程度しか吐かないので必ずタイムアウト待ちになり、
+                # フレームが OS のバッファで最大50ms寝てから打刻されてしまう。
+                # 届いている分だけを即座に取り、無ければ1バイト待つ形にすると、
+                # 打刻が「実際に届いた瞬間」に張り付く。
+                n = ser.in_waiting
+                if n:
+                    chunk = ser.read(n)
+                else:
+                    chunk = ser.read(1)          # 最初の1バイトを待つ
+                    if chunk:
+                        chunk += ser.read(ser.in_waiting)   # 続きも一気に
                 if not chunk:
                     continue
                 t = time.perf_counter() - self.t0
                 fdat.write(chunk)          # ← Visualizerと同じ生バイト列
                 self.n_bytes += len(chunk)
 
-                # フレーム境界を探して時刻を記録する。
-                # チャンク到着時刻をそのフレームの時刻として使う。
-                # 921600bps では 8KB ≒ 90ms 相当だが、実際は細切れで届くので
-                # 誤差は数ms程度に収まる。
+                chunk_start = stream_pos   # このチャンクの先頭の絶対位置
+                stream_pos += len(chunk)
                 buf += chunk
+
                 while True:
                     i = buf.find(MAGIC)
                     if i < 0 or len(buf) - i < 40:
                         break
                     hdr = buf[i + 8:i + 40]
                     _, tl, _, frame, _, _, _, _ = struct.unpack("<8I", hdr)
-                    ffr.write(f"{t:.6f},{frame},{tl}\n")
+
+                    # --- フレーム先頭バイトが届いた時刻を推定する
+                    # read() は最大50ms分をまとめて返すので、チャンクの到着時刻を
+                    # そのまま使うと最大50msの量子化が入る。
+                    # フレーム先頭より後ろのバイトが届くのに要した時間を引けば、
+                    # 先頭が届いた時刻に戻せる(8N1なので1バイト=10ビット)。
+                    p_abs = buf_start + i
+                    if p_abs >= chunk_start:
+                        t_frame = t - (stream_pos - p_abs) / BYTES_PER_SEC
+                    else:
+                        # 前のチャンクで届いていた分(ヘッダ途中で切れた場合)
+                        t_frame = t_prev if t_prev is not None else t
+
+                    ffr.write(f"{t_frame:.6f},{frame},{tl}\n")
                     self.n_frames += 1
                     self.last_frame = frame
+                    buf_start += i + 8
                     buf = buf[i + 8:]      # このマジックを消費して次を探す
+
                 # バッファが育ちすぎないように切り詰める
                 if len(buf) > 65536:
+                    buf_start += len(buf) - 4096
                     buf = buf[-4096:]
+                t_prev = t
                 ffr.flush()
 
 
