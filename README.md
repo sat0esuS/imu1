@@ -60,11 +60,20 @@ pip install -r requirements.txt
 python logger.py --list      # シリアルポートを調べる
 ```
 
-| 表示 | 用途 |
-|---|---|
-| XDS110 Class Application/User UART | `--radar-cfg` |
-| XDS110 Class Auxiliary Data Port | `--radar-data` |
-| USB Serial / M5Stack / ESP32-S3 | `--imu` |
+`--list` はポートの役割を推定して、そのまま打てるコマンドまで出す。
+
+EVM の基板によって USB-シリアル変換チップが違うので、見え方も変わる。
+
+| 変換チップ | 設定ポート (115200) | データポート (921600) |
+|---|---|---|
+| **CP2105** | **Enhanced** COM Port | **Standard** COM Port |
+| **XDS110** | Application/User UART | Auxiliary Data Port |
+
+CP2105 は Enhanced が設定用、Standard がデータ用。直感に反するので注意。
+CoreS3 は VID が `303A`（Espressif）なので、それで判別する。
+
+逆に指定しても壊れないが、設定送信で `ok` が出ず `radar 0 frames` のまま進まない。
+そうなったら `--radar-cfg` と `--radar-data` を入れ替える。
 
 ### 2. D-1実験（MCLに入れる前に必ず）
 

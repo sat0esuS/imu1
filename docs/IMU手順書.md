@@ -84,11 +84,17 @@ pip install pyserial
 python logger.py --list
 ```
 
-| 表示 | 用途 |
-|---|---|
-| XDS110 Class Application/User UART | `--radar-cfg` |
-| XDS110 Class Auxiliary Data Port | `--radar-data` |
-| USB Serial / M5Stack / ESP32-S3 | `--imu` |
+`--list` が役割を推定して、そのまま打てるコマンドまで表示する。
+
+EVM の基板によって USB-シリアル変換チップが違う。
+
+| 変換チップ | 設定ポート (115200) | データポート (921600) |
+|---|---|---|
+| **CP2105** | **Enhanced** COM Port | **Standard** COM Port |
+| **XDS110** | Application/User UART | Auxiliary Data Port |
+
+CP2105 は Enhanced が設定用。直感に反するので注意。
+CoreS3 は VID `303A`（Espressif）で判別される。
 
 ### 記録する
 

@@ -45,16 +45,74 @@ BYTES_PER_SEC = 921600.0 / 10.0
 
 
 # ---------------------------------------------------------------- ポート一覧
+def classify_port(p):
+    """ポートの説明とVID:PIDから役割を推定する。戻り値: (役割, 理由)"""
+    desc = (p.description or "").lower()
+    hwid = (p.hwid or "").upper()
+
+    # --- CoreS3 (ESP32-S3)。Espressif の VID は 303A
+    if "303A:" in hwid or "esp32" in desc or "m5stack" in desc:
+        return "--imu", "Espressif (ESP32-S3)"
+
+    # --- TI mmWave EVM。基板により CP2105 か XDS110 のどちらかを積んでいる
+    #     CP2105: Enhanced が設定用、Standard がデータ用（直感に反するので注意）
+    if "cp2105" in desc or "10C4:EA70" in hwid:
+        if "enhanced" in desc:
+            return "--radar-cfg", "CP2105 Enhanced = 設定ポート (115200)"
+        if "standard" in desc:
+            return "--radar-data", "CP2105 Standard = データポート (921600)"
+        return "?", "CP2105 だが Enhanced/Standard の判別不可"
+    if "xds110" in desc:
+        if "auxiliary" in desc or "data" in desc:
+            return "--radar-data", "XDS110 Auxiliary Data Port (921600)"
+        return "--radar-cfg", "XDS110 Application/User UART (115200)"
+
+    # --- 旧世代EVMの FT4232 など
+    if "0403:" in hwid:
+        return "?", "FTDI。TIの旧世代EVMの可能性"
+    return "", ""
+
+
 def list_serial_ports():
+    ports = list(list_ports.comports())
     print("接続されているシリアルポート:")
-    for p in list_ports.comports():
+    if not ports:
+        print("  （1つも見つかりません。USBケーブルが充電専用でないか確認してください）")
+        return
+
+    guess = {}
+    for p in ports:
+        role, why = classify_port(p)
         print(f"  {p.device:12s}  {p.description}")
         print(f"               hwid: {p.hwid}")
+        if role and role != "?":
+            print(f"               → {role}   ({why})")
+            guess.setdefault(role, p.device)
+        elif role == "?":
+            print(f"               → 役割不明   ({why})")
+
     print()
-    print("目安:")
-    print("  レーダー  : 'XDS110 Class Application/User UART'  -> --radar-cfg")
-    print("              'XDS110 Class Auxiliary Data Port'    -> --radar-data")
-    print("  CoreS3    : 'USB Serial' / 'M5Stack' / ESP32-S3   -> --imu")
+    need = ("--radar-cfg", "--radar-data", "--imu")
+    if all(k in guess for k in need):
+        print("推定されたコマンド:")
+        print(f"  python logger.py --cfg <設定ファイル.cfg> \\")
+        print(f"                   --radar-cfg {guess['--radar-cfg']} "
+              f"--radar-data {guess['--radar-data']} --imu {guess['--imu']} \\")
+        print(f"                   --out run --outdir data")
+        print()
+        print("  ※ PowerShell では行末の \\ ではなくバッククォート ` を使うか、1行で書くこと")
+        print("  ※ 設定送信で ok が出ず radar が 0 frames のままなら、")
+        print("     --radar-cfg と --radar-data を入れ替えて試すこと（壊れません）")
+    else:
+        missing = [k for k in need if k not in guess]
+        print(f"見つからなかったもの: {', '.join(missing)}")
+        print()
+        print("目安:")
+        print("  レーダー(CP2105) : 'Enhanced COM Port' -> --radar-cfg")
+        print("                     'Standard COM Port' -> --radar-data")
+        print("  レーダー(XDS110) : 'Application/User UART' -> --radar-cfg")
+        print("                     'Auxiliary Data Port'   -> --radar-data")
+        print("  CoreS3           : VID 303A / 'USB シリアル デバイス' -> --imu")
 
 
 # ---------------------------------------------------------------- cfg送信
