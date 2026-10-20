@@ -84,6 +84,12 @@ ap.add_argument("--s-th", type=float, default=None,
                 help="動作モデルの回転ノイズ[rad/フレーム]。IMU使用時は小さくできる")
 ap.add_argument("--no-imu", action="store_true",
                 help="IMUを読み込んでも回転に使わない(比較用)")
+ap.add_argument("--inject", type=float, default=0.0,
+                help="毎リサンプルで地図全体にばら撒き直すパーティクルの割合。"
+                     "出発点が分かっている追従走行では 0 にする(既定)。"
+                     "初期位置不明のグローバル推定でのみ 0.03 程度にする")
+ap.add_argument("--temperature", type=float, default=6.0,
+                help="尤度を鈍らせる係数。大きいほど1フレームで決めつけない")
 ap.add_argument("--out", default="mcl_moving_imu.png")
 a = ap.parse_args()
 
@@ -176,10 +182,13 @@ if a.imu:
 # 回転が観測できるようになったぶん、回転ノイズを絞れる
 s_th = a.s_th if a.s_th is not None else (0.012 if use_imu else 0.04)
 s_cross = 0.02 if use_imu else 0.06
-m = MCL(lf, n_particles=a.particles, motion_noise=(0.06, s_th, s_cross))
+m = MCL(lf, n_particles=a.particles, motion_noise=(0.06, s_th, s_cross),
+        temperature=a.temperature, random_inject=a.inject)
 m.init_around(a.init[0], a.init[1], a.init[2], s_xy=0.2, s_deg=8)
 print(f"動作モデル: s_xy=0.06, s_th={s_th:.3f} rad ({np.degrees(s_th):.1f}°), "
       f"s_cross={s_cross:.3f}" + ("  [IMUあり]" if use_imu else "  [IMUなし]"))
+print(f"パーティクル: {a.particles:,}個, temperature={a.temperature:.1f}, "
+      f"ランダム注入={a.inject*100:.0f}%")
 
 traj, vels, yaws = [], [], []
 for i in range(0, len(frames) - a.step, a.step):
