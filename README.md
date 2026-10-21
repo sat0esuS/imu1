@@ -40,6 +40,7 @@ pc/              PC側 Python
   imu.py           バイアス推定・ヨー積分・レーダーフレームへの整列
   analyze_d1.py    D-1実験（ジャイロの素性測定）の解析
   run_moving_imu.py  IMU対応版のMCL
+  pyloc_ref/       標準的なMCL実装との比較（どの設計が効いているかの検証）
 web/             GitHub Pages（書き込みページ）
 docs/            手順書
 ```
