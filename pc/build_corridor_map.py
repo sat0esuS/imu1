@@ -96,39 +96,23 @@ def build(res=RES, wall=0.10, pad=1.5):
     return dict(occ=occ, free=free, origin=lo, resolution=res, width=W, height=H)
 
 
-def save_png(m, path):
-    """占有格子をそのまま画像にする（水色=通行可能, 灰色=壁）。
+def save_png(m, path, scale=3):
+    """npz に入る配列をそのまま画像にする。1セル = scale ピクセル。
 
-    配列を 1 対 1 で描くだけで、補間も変形もしない。
+    軸も文字も枠も付けない。occ と free を色分けして並べるだけなので、
+    画像のピクセルと配列の要素が 1 対 1 で対応する。
     """
-    import matplotlib
-    matplotlib.use("Agg")                   # 画面を持たない環境でも描けるようにする
-    import matplotlib.pyplot as plt
+    import matplotlib.image as mpimg
 
-    occ, free, res, org = m["occ"], m["free"], m["resolution"], m["origin"]
+    occ, free = m["occ"], m["free"]
     H, W = occ.shape
-    # imshow に渡す描画範囲 [左, 右, 下, 上]。セル数 × セルの大きさで実座標に直す
-    ext = [org[0], org[0] + W * res, org[1], org[1] + H * res]
-
-    fig, ax = plt.subplots(figsize=(13.0, 8.0), dpi=160)
-    # True のセルだけ 1.0、False は NaN にする。NaN は描画されないので透明になり、
-    # 2枚を重ねられる。origin="lower" は配列の行0を下にする（+Y が上を向く）。
-    # interpolation="nearest" で補間を切り、1セルが1つの四角として出る
-    ax.imshow(np.where(free, 1.0, np.nan), origin="lower", extent=ext,
-              cmap="Blues", vmin=0, vmax=6, interpolation="nearest")
-    #                              ↑ 値1.0 が色の 1/6 の位置に来るので薄い水色になる
-    ax.imshow(np.where(occ, 1.0, np.nan), origin="lower", extent=ext,
-              cmap="gray", vmin=0, vmax=1.6, interpolation="nearest")
-    #                             ↑ 値1.0 が色の 1/1.6 の位置に来るので中間のグレー
-
-    ax.set_aspect("equal")                  # 縦横の縮尺を揃える（廊下が歪まないように）
-    ax.set_xlabel("X [m]")
-    ax.set_ylabel("Y [m]")
-    ax.grid(color="#DDE3EC", lw=0.7, alpha=0.7)
-    ax.set_axisbelow(True)                  # グリッドを地図の下に敷く
-    fig.tight_layout()
-    fig.savefig(path, bbox_inches="tight", facecolor="white")
-    plt.close(fig)                          # figure を解放する（連続実行で溜めないため）
+    img = np.full((H, W, 3), 255, np.uint8)      # まず全セルを白で埋める
+    img[free] = (214, 230, 245)                  # free が True のセル → 薄い水色
+    img[occ] = (110, 110, 110)                   # occ が True のセル → グレー
+    # 整数倍に引き伸ばす。np.repeat なので補間は入らず、1セルが scale 角の正方形になる
+    img = np.repeat(np.repeat(img, scale, axis=0), scale, axis=1)
+    # 配列は行0が下（y が小さい側）だが、画像は行0が上に出るので上下を反転して書く
+    mpimg.imsave(path, img[::-1])
 
 
 if __name__ == "__main__":
@@ -139,6 +123,7 @@ if __name__ == "__main__":
                     default=None, help="画像も出す（既定 map_corridor.png）")
     ap.add_argument("--res", type=float, default=RES, help="セルの大きさ [m]")
     ap.add_argument("--wall", type=float, default=0.10, help="壁の厚さ [m]")
+    ap.add_argument("--scale", type=int, default=3, help="画像で1セルを何ピクセルにするか")
     a = ap.parse_args()
 
     m = build(res=a.res, wall=a.wall)
@@ -151,5 +136,5 @@ if __name__ == "__main__":
           f"通行可能 {m['free'].sum()} セル = {m['free'].sum() * a.res ** 2:.1f} m2, "
           f"壁 {m['occ'].sum()} セル")
     if a.png:
-        save_png(m, a.png)
+        save_png(m, a.png, a.scale)
         print(f"画像を保存しました: {a.png}")
