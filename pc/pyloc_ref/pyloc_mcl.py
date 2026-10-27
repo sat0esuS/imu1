@@ -40,6 +40,10 @@ class MCL:
         self.measurement_resolution = 0.1
         self.z_hit, self.z_rand = 0.9, 0.1
         self.resample_threshold = 0.5
+        # 原典では 10e-6 のハードコード。ミリ波の疎な点群では外れ値1個で
+        # 正解のパーティクルが却下されてしまうため、設定可能にした。
+        # 既定値は原典のままなので、触らなければ挙動は変わらない。
+        self.measurement_floor = 10e-6
         self.particle_num = 100
         self.particles = None          # (N,3) 姿勢
         self.weights = None            # (N,)
@@ -53,6 +57,15 @@ class MCL:
         self.odom_noise3, self.odom_noise4 = n3, n4
     def set_measurement_variance(self, v): self.measurement_variance = v
     def set_measurement_resolution(self, r): self.measurement_resolution = r
+    def set_measurement_floor(self, f):
+        """一様床の高さ。原典は 10e-6 固定。
+
+        尤度の下限。観測点が壁からどれだけ離れていても、この値より下には
+        ならない。小さいほど外れ値1個の罰が重くなる（床 f の点1個が
+        log(z_rand*f*resolution) を叩き込む）。ミリ波レーダーのように
+        1フレームの点が2〜8個でゴーストが混ざる場合は大きめに取る。
+        """
+        self.measurement_floor = f
     def set_measurement_model_coefficients(self, z_hit, z_rand):
         if abs(z_hit + z_rand - 1.0) > 1e-12:
             raise ValueError("sum of z_hit and z_rand must be one.")
@@ -109,7 +122,7 @@ class MCL:
         norm_coef = 1.0 / np.sqrt(2.0 * PI * var)
         # 原典のまま: 指数の分母が 2*(2*var) になっている（通常のガウスの√2倍広い）
         prob = self.z_hit * norm_coef * np.exp(-0.5 * min_dl ** 2 / (2.0 * var)) \
-            + self.z_rand * 10e-6
+            + self.z_rand * self.measurement_floor
         prob = np.minimum(prob * self.measurement_resolution, 1.0)
         total_log_prob = np.log(prob).sum(axis=1)                 # (N,)
 
