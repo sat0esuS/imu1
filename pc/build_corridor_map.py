@@ -15,7 +15,7 @@ SLAMで作った地図ではなく、巻尺で測った寸法から幾何的に�
   廊下2-1 幅  2.710 m   (P6は西壁から1.500)
   P4→CAD西壁 1.454 m
   EVブロック  X -6.20〜-3.87, Y 7.50〜9.40
-  西へ延びる廊下 幅1.850 (Y 4.87〜6.72)
+  西へ延びる廊下 幅1.850 (Y 4.870〜6.720)
   センサは台車先端から後方0.10 / 右0.15（地図には関係しない。解析側で扱う）
 
 使い方:
@@ -44,6 +44,11 @@ X_CADN = -0.900         # CADサーバ室 北壁 (= 廊下1 南壁)
 X_EVN = -3.870          # EV北壁 = 廊下A 南壁
 X_EPSS = -1.670         # EPS南壁 = 廊下A 北壁
 X_FAR = 13.0            # 廊下2-1は実際にはもっと続くが、この範囲までを地図にする
+Y_WCOR_S = 4.870        # 西へ延びる廊下 南壁
+Y_WCOR_N = 6.720        # 西へ延びる廊下 北壁（幅 = N - S = 1.850）
+X_EV_W = -6.200         # EVブロック 西端 (東端は X_EVN)
+Y_EV_S = 7.500          # EVブロック 南端
+Y_EV_N = 9.400          # EVブロック 北端
 
 
 def build(res=RES, wall=0.10, pad=1.5):
@@ -74,12 +79,12 @@ def build(res=RES, wall=0.10, pad=1.5):
     free |= box(X_EVN, X_N1, Y_CADW, Y_EPSE)             # 廊下2-2 (P2→P4)
     free |= box(X_EVN, X_EPSS, Y_EPSE, Y_R21_E)          # 廊下A (P4→P6)
     free |= box(-X_FAR, X_FAR, Y_R21_E, Y_KYODO)         # 廊下2-1 (東西に長い)
-    free |= box(-X_FAR, X_EVN, 4.87, 6.72)               # 西へ延びる廊下
+    free |= box(-X_FAR, X_EVN, Y_WCOR_S, Y_WCOR_N)       # 西へ延びる廊下
     # EVブロックは廊下の中にある障害物なので、足した領域から引く。
     # ただし現在の矩形の組み方では、この範囲はもともと free になっていないので
     # 実際には何も変わらない（確認済み: 範囲内1786セルのうち free は0）。
     # 廊下の矩形を広げたときに効いてくるので、保険として残してある
-    free &= ~box(-6.20, X_EVN, 7.50, 9.40)
+    free &= ~box(X_EV_W, X_EVN, Y_EV_S, Y_EV_N)
 
     # --- ③ 通行可能領域の縁を壁にする
     r = max(1, int(round(wall / res)))                   # 壁の厚さをセル数に直す (10cm → 2セル)
@@ -186,16 +191,19 @@ def save_labeled_png(m, path):
              f"廊下A 幅 {X_EPSS - X_EVN:.3f} m", (-2.77, 9.62), 0, "center"),
             ((2.6, Y_R21_E), (2.6, Y_KYODO),
              f"廊下2-1 幅 {Y_KYODO - Y_R21_E:.3f} m", (2.35, 11.9), 90, "center"),
-            ((-7.4, 4.87), (-7.4, 6.72), "西へ延びる廊下 幅 1.850 m",
-             (-7.65, 5.80), 90, "center")):
+            ((-7.4, Y_WCOR_S), (-7.4, Y_WCOR_N),
+             f"西へ延びる廊下 幅 {Y_WCOR_N - Y_WCOR_S:.3f} m",
+             (-7.65, (Y_WCOR_S + Y_WCOR_N) / 2), 90, "center")):
         ax.annotate("", xy=p0, xytext=p1,
                     arrowprops=dict(arrowstyle="<->", color=RED, lw=1.6),
                     zorder=6)
         ax.annotate(lab, xy=tp, fontsize=9.5, color=RED, rotation=rot,
                     ha=ha, va="center", fontweight="bold", zorder=7, bbox=BOX)
 
-    ax.annotate("EV ブロック（占有）\nX -6.20〜-3.87 / Y 7.50〜9.40",
-                xy=(-5.03, 8.45), fontsize=9, color=SUB, ha="center",
+    ax.annotate(f"EV ブロック（占有）\n"
+                f"X {X_EV_W:.2f}〜{X_EVN:.2f} / Y {Y_EV_S:.2f}〜{Y_EV_N:.2f}",
+                xy=((X_EV_W + X_EVN) / 2, (Y_EV_S + Y_EV_N) / 2),
+                fontsize=9, color=SUB, ha="center",
                 va="center", fontweight="bold", zorder=7, bbox=BOX)
     ax.annotate("← 廊下2-1 は X ±13 まで続く →", xy=(-2.0, 12.0), fontsize=9,
                 color=SUB, ha="center", fontweight="bold", zorder=7, bbox=BOX)
