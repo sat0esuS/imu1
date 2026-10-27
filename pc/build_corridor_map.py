@@ -75,7 +75,10 @@ def build(res=RES, wall=0.10, pad=1.5):
     free |= box(X_EVN, X_EPSS, Y_EPSE, Y_R21_E)          # 廊下A (P4→P6)
     free |= box(-X_FAR, X_FAR, Y_R21_E, Y_KYODO)         # 廊下2-1 (東西に長い)
     free |= box(-X_FAR, X_EVN, 4.87, 6.72)               # 西へ延びる廊下
-    # EVブロックは廊下の中にある障害物なので、足した領域から引く
+    # EVブロックは廊下の中にある障害物なので、足した領域から引く。
+    # ただし現在の矩形の組み方では、この範囲はもともと free になっていないので
+    # 実際には何も変わらない（確認済み: 範囲内1786セルのうち free は0）。
+    # 廊下の矩形を広げたときに効いてくるので、保険として残してある
     free &= ~box(-6.20, X_EVN, 7.50, 9.40)
 
     # --- ③ 通行可能領域の縁を壁にする
@@ -115,8 +118,102 @@ def save_png(m, path, scale=3):
     mpimg.imsave(path, img[::-1])
 
 
+def _use_cjk_font():
+    """日本語が出るフォントを探す。見つからなくても落ちない。"""
+    import matplotlib.pyplot as plt
+    from matplotlib import font_manager
+    for path in ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                 "C:/Windows/Fonts/YuGothM.ttc", "C:/Windows/Fonts/meiryo.ttc",
+                 "C:/Windows/Fonts/msgothic.ttc"):
+        if os.path.exists(path):
+            font_manager.fontManager.addfont(path)
+            plt.rcParams["font.family"] = \
+                font_manager.FontProperties(fname=path).get_name()
+            break
+    plt.rcParams["axes.unicode_minus"] = False
+
+
+def save_labeled_png(m, path):
+    """どの壁がどの定数で、幅がいくつかを書き込んだ確認用の図。
+
+    巻尺で測った値と図を突き合わせるためのもの。素の --png とは別物で、
+    ここに描かれている線や寸法は npz には入っていない。
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    _use_cjk_font()
+
+    SUB, RED, BLUE, ORANGE = "#5C5A6E", "#B5484E", "#2E5FA3", "#C77A15"
+    # ラベルの下に白を敷く。敷かないと破線が文字を貫いて読めなくなる
+    BOX = dict(boxstyle="round,pad=0.22", fc="white", ec="none", alpha=0.88)
+    occ, free, res, org = m["occ"], m["free"], m["resolution"], m["origin"]
+    H, W = occ.shape
+    ext = [org[0], org[0] + W * res, org[1], org[1] + H * res]
+
+    fig, ax = plt.subplots(figsize=(12.6, 10.4), dpi=160)
+    ax.imshow(np.where(free, 1.0, np.nan), origin="lower", extent=ext,
+              cmap="Blues", vmin=0, vmax=8, interpolation="nearest", zorder=1)
+    ax.imshow(np.where(occ, 1.0, np.nan), origin="lower", extent=ext,
+              cmap="gray", vmin=0, vmax=1.8, interpolation="nearest", zorder=2)
+
+    # --- 縦線 = X_* の定数。上端にラベルを出す
+    # 近い線どうしでラベルがぶつかるので、高さを交互にずらす
+    for x, name, note, ytop in ((X_N1, "X_N1", "廊下1 北壁", 15.4),
+                                (X_CADN, "X_CADN", "廊下1 南壁", 14.2),
+                                (X_EPSS, "X_EPSS", "廊下A 北壁", 15.4),
+                                (X_EVN, "X_EVN", "廊下A 南壁", 14.2)):
+        ax.axvline(x, color=BLUE, lw=1.0, ls="--", alpha=0.8, zorder=5)
+        ax.annotate(f"{name} = {x:+.3f}\n{note}", xy=(x, ytop), fontsize=9,
+                    color=BLUE, ha="center", va="bottom", fontweight="bold",
+                    zorder=7, bbox=BOX)
+
+    # --- 横線 = Y_* の定数。右端にラベルを出す
+    for y, name, note in ((Y_CADW, "Y_CADW", "CADサーバ室 西壁"),
+                          (Y_EPSE, "Y_EPSE", "EPS 東壁"),
+                          (Y_R21_E, "Y_R21_E", "廊下2-1 東壁"),
+                          (Y_KYODO, "Y_KYODO", "廊下2-1 西壁")):
+        ax.axhline(y, color=ORANGE, lw=1.0, ls="--", alpha=0.8, zorder=5)
+        ax.annotate(f"{name} = {y:.3f}  ({note})", xy=(4.3, y), fontsize=9,
+                    color=ORANGE, ha="left", va="center", fontweight="bold",
+                    zorder=7, bbox=BOX)
+
+    # --- 寸法線。(始点, 終点, ラベル, ラベル位置, 回転, 横位置揃え)
+    for p0, p1, lab, tp, rot, ha in (
+            ((X_CADN, 1.6), (X_N1, 1.6), f"廊下1 幅 {X_N1 - X_CADN:.3f} m",
+             (0.0, 1.15), 0, "center"),
+            ((X_EVN, 10.05), (X_EPSS, 10.05),
+             f"廊下A 幅 {X_EPSS - X_EVN:.3f} m", (-2.77, 9.62), 0, "center"),
+            ((2.6, Y_R21_E), (2.6, Y_KYODO),
+             f"廊下2-1 幅 {Y_KYODO - Y_R21_E:.3f} m", (2.35, 11.9), 90, "center"),
+            ((-7.4, 4.87), (-7.4, 6.72), "西へ延びる廊下 幅 1.850 m",
+             (-7.65, 5.80), 90, "center")):
+        ax.annotate("", xy=p0, xytext=p1,
+                    arrowprops=dict(arrowstyle="<->", color=RED, lw=1.6),
+                    zorder=6)
+        ax.annotate(lab, xy=tp, fontsize=9.5, color=RED, rotation=rot,
+                    ha=ha, va="center", fontweight="bold", zorder=7, bbox=BOX)
+
+    ax.annotate("EV ブロック（占有）\nX -6.20〜-3.87 / Y 7.50〜9.40",
+                xy=(-5.03, 8.45), fontsize=9, color=SUB, ha="center",
+                va="center", fontweight="bold", zorder=7, bbox=BOX)
+    ax.annotate("← 廊下2-1 は X ±13 まで続く →", xy=(-2.0, 12.0), fontsize=9,
+                color=SUB, ha="center", fontweight="bold", zorder=7, bbox=BOX)
+
+    ax.set_xlim(-9.0, 9.0)
+    ax.set_ylim(-1.2, 16.6)
+    ax.set_aspect("equal")
+    ax.set_xlabel("X [m]", color=SUB)
+    ax.set_ylabel("Y [m]", color=SUB)
+    ax.grid(color="#DDE3EC", lw=0.7, alpha=0.7)
+    ax.set_axisbelow(True)
+    fig.tight_layout()
+    fig.savefig(path, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+
+
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(description="廊下の占有格子地図を実測寸法から作る")
+    ap = argparse.ArgumentParser(description="廊下の occupancy grid を実測寸法から作る")
     ap.add_argument("--npz", default=os.path.join(HERE, "map_corridor.npz"))
     # nargs="?" + const で、--png だけ書けば既定名、--png 別名.png で名前指定になる
     ap.add_argument("--png", nargs="?", const=os.path.join(HERE, "map_corridor.png"),
@@ -124,6 +221,10 @@ if __name__ == "__main__":
     ap.add_argument("--res", type=float, default=RES, help="セルの大きさ [m]")
     ap.add_argument("--wall", type=float, default=0.10, help="壁の厚さ [m]")
     ap.add_argument("--scale", type=int, default=3, help="画像で1セルを何ピクセルにするか")
+    ap.add_argument("--labels", nargs="?",
+                    const=os.path.join(HERE, "map_corridor_labels.png"),
+                    default=None,
+                    help="どの壁がどの定数で幅がいくつかを書いた確認用の図")
     a = ap.parse_args()
 
     m = build(res=a.res, wall=a.wall)
@@ -138,3 +239,6 @@ if __name__ == "__main__":
     if a.png:
         save_png(m, a.png, a.scale)
         print(f"画像を保存しました: {a.png}")
+    if a.labels:
+        save_labeled_png(m, a.labels)
+        print(f"ラベル付きの図を保存しました: {a.labels}")
