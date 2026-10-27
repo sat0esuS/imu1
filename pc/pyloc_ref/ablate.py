@@ -12,7 +12,7 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import mcl as M                                        # noqa: E402
+import mcl_v1 as M                                        # noqa: E402
 from common import load_run, steps                     # noqa: E402
 
 ap = argparse.ArgumentParser(description="観測モデルの要素別の寄与を測る")

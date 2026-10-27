@@ -51,7 +51,7 @@ for _p in ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
 matplotlib.rcParams["axes.unicode_minus"] = False
 import matplotlib.pyplot as plt
 
-from mcl import LikelihoodField, MCL
+from mcl_v1 import LikelihoodField, MCL
 from preprocess import parse_dat, to_scan, merge_scans, FRAME_PERIOD
 from egomotion import estimate_velocity
 import imu as IMU
