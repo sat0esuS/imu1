@@ -44,6 +44,10 @@ class MCL:
         # 正解のパーティクルが却下されてしまうため、設定可能にした。
         # 既定値は原典のままなので、触らなければ挙動は変わらない。
         self.measurement_floor = 10e-6
+        # 原典の動作モデルは σ ∝ Δ² なので、止まっている間はノイズが 0 になり、
+        # 横方向のノイズも持たない。既定 0 なら原典と同一の挙動。
+        self.odom_floor_fw = 0.0
+        self.odom_floor_lat = 0.0
         self.particle_num = 100
         self.particles = None          # (N,3) 姿勢
         self.weights = None            # (N,)
@@ -66,6 +70,15 @@ class MCL:
         1フレームの点が2〜8個でゴーストが混ざる場合は大きめに取る。
         """
         self.measurement_floor = f
+
+    def set_odom_noise_floor(self, fw, lat=0.0):
+        """動作ノイズの下限 [m]。原典は 0（= σ ∝ Δ² のみ）。
+
+        fw  : 前進方向の σ の下限。移動量が小さいステップでも最低これだけ散る
+        lat : 横方向の σ。原典にはこの項が無く、パーティクルは自分の向きの
+              前後にしか動けない
+        """
+        self.odom_floor_fw, self.odom_floor_lat = fw, lat
     def set_measurement_model_coefficients(self, z_hit, z_rand):
         if abs(z_hit + z_rand - 1.0) > 1e-12:
             raise ValueError("sum of z_hit and z_rand must be one.")
@@ -98,11 +111,17 @@ class MCL:
         d2, y2 = delta_dist ** 2, delta_yaw ** 2
         s_d = self.odom_noise1 * d2 + self.odom_noise2 * y2
         s_y = self.odom_noise3 * d2 + self.odom_noise4 * y2
-        del_dist = np.random.normal(delta_dist, max(s_d, 1e-12), N)
-        del_yaw  = np.random.normal(delta_yaw,  max(s_y, 1e-12), N)
+        s_d = max(s_d, self.odom_floor_fw, 1e-12)
+        s_y = max(s_y, 1e-12)
+        del_dist = np.random.normal(delta_dist, s_d, N)
+        del_yaw = np.random.normal(delta_yaw, s_y, N)
         th = self.particles[:, 2]
         self.particles[:, 0] += del_dist * np.cos(th)
         self.particles[:, 1] += del_dist * np.sin(th)
+        if self.odom_floor_lat > 0.0:          # 原典には無い横方向の散り
+            lat = np.random.normal(0.0, self.odom_floor_lat, N)
+            self.particles[:, 0] -= lat * np.sin(th)
+            self.particles[:, 1] += lat * np.cos(th)
         self.particles[:, 2] = mod_yaw(th + del_yaw)
 
     # ---- 原典 calculate_weights（観測モデル）
