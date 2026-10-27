@@ -172,7 +172,10 @@ def draw(k):
         if j == 1:                      # 追従パネルは毎コマ窓を動かす
             A["ax"].set_xlim(x - a.zoom, x + a.zoom)
             A["ax"].set_ylim(y - a.zoom, y + a.zoom)
-    txt.set_text(f"t = {s['t']:5.1f} s   step {k+1}/{len(snaps)}\n"
+    # --frames を渡していないと時刻が無いので、そのときはステップだけ出す
+    tt = f"t = {s['t']:5.1f} s   " if np.isfinite(s["t"]) else ""
+    txt.set_text(f"{tt}step {k+1}/{len(snaps)}"
+                 f"{'' if use_imu else '   (no IMU: rotation unobserved)'}\n"
                  f"pose ({x:+5.2f}, {y:+5.2f}) {np.degrees(yaw):+6.1f} deg\n"
                  f"ESS {s['ess']:4.0f}/{a.particles}   spread {s['spread']*100:4.0f} cm")
     return []
