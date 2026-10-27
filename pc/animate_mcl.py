@@ -151,8 +151,10 @@ for j, ax in enumerate(axes):
 axes[0].set_ylabel("Y [m]", color=SUB)
 axes[0].legend(fontsize=9, loc="lower left", framealpha=0.95)
 if two:
-    axes[1].set_title(f"推定姿勢を追いかける（±{a.zoom:.1f} m）",
+    # 日本語フォントは環境依存なので、図の中の文字は ASCII に揃える
+    axes[1].set_title(f"follow the estimate  (+/- {a.zoom:.1f} m)",
                       fontsize=11, color=INK)
+fig.tight_layout()
 txt = axes[0].text(0.02, 0.985, "", transform=axes[0].transAxes, va="top",
                    fontsize=10, color=INK, family="monospace", zorder=7,
                    bbox=dict(boxstyle="round,pad=0.4", fc="white", ec=GRID))
