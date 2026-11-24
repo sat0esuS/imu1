@@ -35,6 +35,7 @@ Arduino IDE も PlatformIO も要らない。
 ```
 firmware/        CoreS3 ファームウェア (PlatformIO)
   src/main.cpp     内蔵BMI270を読んでUSBシリアルへ1行ずつ流すだけ
+firmware_s3logger/  CoreS3 単体でレーダー＋IMU を microSD に記録 (ESP-IDF)。PC 不要
 pc/              PC側 Python
   logger.py        レーダーとIMUを1プロセスで記録（TI Visualizer の置き換え）
   imu.py           バイアス推定・ヨー積分・レーダーフレームへの整列
